@@ -1,0 +1,208 @@
+// prisma/schema.prisma
+// News Portal Web Application with Admin + Author + User roles
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== USER MODEL ====================
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String
+  profilePicture String?  @default("default-avatar.png")
+  bio           String?
+  role          UserRole  @default(USER)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // OTP Password Reset Fields
+  resetOtp       String?
+  resetOtpExpires DateTime?
+
+  // Google OAuth Fields
+  googleId       String?   @unique
+  isGoogleAuth   Boolean   @default(false)
+
+  // Relations
+  authoredArticles Article[] @relation("AuthorArticles")
+  comments      Comment[]
+  reactions     Reaction[]
+  ratings       Rating[]
+  sessions      Session[]
+  reviews       Article[] @relation("ReviewedBy")
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+// ==================== ARTICLE MODEL ====================
+model Article {
+  id            String        @id @default(cuid())
+  title         String
+  content       String        @db.Text
+  summary       String        @db.Text
+  thumbnail     String?
+  status        ArticleStatus @default(DRAFT)
+  rejectionReason String?
+  publishedAt   DateTime?
+  viewCount     Int           @default(0)
+  
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  authorId      String
+  categoryId    String
+
+  author        User          @relation("AuthorArticles", fields: [authorId], references: [id], onDelete: Cascade)
+  reviewer      User?         @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  category      Category      @relation(fields: [categoryId], references: [id])
+  comments      Comment[]
+  reactions     Reaction[]
+  ratings       Rating[]
+  analytics     Analytics?
+
+  @@index([status])
+  @@index([authorId])
+  @@index([categoryId])
+  @@index([status, publishedAt])
+ 
+  @@map("articles")
+}
+
+// ==================== CATEGORY MODEL ====================
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  articles    Article[]
+
+  @@map("categories")
+}
+
+// ==================== COMMENT MODEL ====================
+model Comment {
+  id            String    @id @default(cuid())
+  content       String    @db.Text
+  isModerated   Boolean   @default(false)
+  isApproved    Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  userId        String
+  articleId     String
+  parentCommentId String?
+
+  author        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article       Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  parentComment Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies       Comment[] @relation("CommentReplies")
+
+  @@index([articleId, createdAt])
+  @@index([userId])
+  @@index([isApproved])
+  @@map("comments")
+}
+
+// ==================== REACTION MODEL ====================
+model Reaction {
+  id        String        @id @default(cuid())
+  type      ReactionType  @default(LIKE)
+  createdAt DateTime      @default(now())
+
+  userId    String
+  articleId String
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article   Article       @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([articleId, type])
+  @@map("reactions")
+}
+
+// ==================== RATING MODEL ====================
+model Rating {
+  id        String    @id @default(cuid())
+  value     Int
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  userId    String
+  articleId String
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article   Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([articleId])
+  @@map("ratings")
+}
+
+// ==================== ANALYTICS MODEL ====================
+model Analytics {
+  id             String    @id @default(cuid())
+  articleId      String    @unique
+  date           DateTime  @default(now())
+  views          Int       @default(0)
+  uniqueVisitors Int       @default(0)
+  avgReadTime    Int       @default(0)
+  shareCount     Int       @default(0)
+  
+  article        Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, date])
+  @@index([date])
+  @@map("analytics")
+}
+
+// ==================== SESSION MODEL ====================
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([token])
+  @@map("sessions")
+}
+
+// ==================== ENUMS ====================
+enum UserRole {
+  ADMIN
+  AUTHOR
+  USER
+}
+
+enum ArticleStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PUBLISHED
+  REJECTED
+  ARCHIVED
+}
+
+enum ReactionType {
+  LIKE
+  DISLIKE
+}
